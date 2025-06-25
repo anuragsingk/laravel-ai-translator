@@ -23,14 +23,16 @@ class TranslatorService
     {
         if (!$this->apiKey) {
             Log::error('Gemini API Key is not set.');
-            return null;
+            throw new \Exception('Gemini API Key is not set.');
         }
 
         $prompt = str_replace('{language}', $targetLanguage, $this->aiPrompt) . "\n\n" . $text;
 
         try {
-            $response = Http::post(
-                "https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key={$this->apiKey}",
+            $response = Http::withHeaders([
+                'Content-Type' => 'application/json',
+            ])->post(
+                "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={$this->apiKey}",
                 [
                     'contents' => [
                         [
@@ -42,9 +44,27 @@ class TranslatorService
                 ]
             );
 
-            $response->throw();
+            if ($response->failed()) {
+                Log::error('Gemini API request failed', [
+                    'status' => $response->status(),
+                    'body' => $response->body(),
+                ]);
+                throw new \Exception('Gemini API request failed: ' . $response->body());
+            }
 
-            $translatedText = $response->json('candidates.0.content.parts.0.text');
+            $jsonResponse = $response->json();
+
+            // Log full response for debugging
+            Log::build([
+                'driver' => 'single',
+                'path' => storage_path('logs/ai-translator-debug.log'),
+            ])->info('Gemini API response: ' . json_encode($jsonResponse, JSON_PRETTY_PRINT));
+
+            $translatedText = $jsonResponse['candidates'][0]['content']['parts'][0]['text'] ?? null;
+
+            if ($translatedText === null) {
+                throw new \Exception('Failed to extract translated text from API response.');
+            }
 
             if ($this->logTranslations) {
                 Log::build([
@@ -56,7 +76,7 @@ class TranslatorService
             return $translatedText;
         } catch (\Exception $e) {
             Log::error("Gemini API translation failed: " . $e->getMessage());
-            return null;
+            throw $e;
         }
     }
 
@@ -67,7 +87,12 @@ class TranslatorService
             if (is_array($value)) {
                 $translatedData[$key] = $this->translateArray($value, $targetLanguage, $sourceLanguage);
             } else {
-                $translatedData[$key] = $this->translate($value, $targetLanguage, $sourceLanguage);
+                try {
+                    $translatedData[$key] = $this->translate($value, $targetLanguage, $sourceLanguage);
+                } catch (\Exception $e) {
+                    $translatedData[$key] = null;
+                    Log::error("Failed to translate '{$value}' to {$targetLanguage}: {$e->getMessage()}");
+                }
             }
         }
         return $translatedData;

@@ -33,7 +33,6 @@ class AddLanguageCommand extends Command
             return Command::FAILURE;
         }
 
-        // Check if source files are configured
         if (empty($sourceFiles)) {
             $this->warn('No source files configured in config/ai-translator.php. Skipping translation.');
         } else {
@@ -41,11 +40,15 @@ class AddLanguageCommand extends Command
 
             $translated = false;
             foreach ($sourceFiles as $type => $files) {
+                $totalItems = count($files);
+                $this->output->progressStart($totalItems);
+
                 foreach ($files as $file) {
                     $sourceFilePath = lang_path($type === 'json' ? $file : "{$sourceLanguage}/{$file}");
 
                     if (!File::exists($sourceFilePath)) {
                         $this->warn("Source file not found: {$sourceFilePath}");
+                        $this->output->progressAdvance();
                         continue;
                     }
 
@@ -56,18 +59,29 @@ class AddLanguageCommand extends Command
                             $sourceContent = json_decode(File::get($sourceFilePath), true);
                             if (!is_array($sourceContent)) {
                                 $this->error("Invalid JSON content in {$sourceFilePath}");
+                                $this->output->progressAdvance();
                                 continue;
                             }
                             $translatedContent = $translatorService->translateArray($sourceContent, $targetLanguage, $sourceLanguage);
+                            // Check for null translations
+                            $nullCount = count(array_filter($translatedContent, fn($value) => $value === null));
+                            if ($nullCount > 0) {
+                                $this->warn("{$nullCount} translations failed in {$file}. Check logs for details.");
+                            }
                             $targetFilePath = lang_path("{$targetLanguage}.json");
                             File::put($targetFilePath, json_encode($translatedContent, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
                         } elseif ($type === 'php') {
                             $sourceContent = require $sourceFilePath;
                             if (!is_array($sourceContent)) {
                                 $this->error("Invalid PHP array content in {$sourceFilePath}");
+                                $this->output->progressAdvance();
                                 continue;
                             }
                             $translatedContent = $translatorService->translateArray($sourceContent, $targetLanguage, $sourceLanguage);
+                            $nullCount = count(array_filter($translatedContent, fn($value) => $value === null));
+                            if ($nullCount > 0) {
+                                $this->warn("{$nullCount} translations failed in {$file}. Check logs for details.");
+                            }
                             $targetDir = lang_path($targetLanguage);
                             if (!File::isDirectory($targetDir)) {
                                 File::makeDirectory($targetDir, 0755, true);
@@ -80,7 +94,11 @@ class AddLanguageCommand extends Command
                     } catch (\Exception $e) {
                         $this->error("Translation failed for {$file}: {$e->getMessage()}");
                     }
+
+                    $this->output->progressAdvance();
                 }
+
+                $this->output->progressFinish();
             }
 
             if (!$translated) {
