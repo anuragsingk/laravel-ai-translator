@@ -1,0 +1,41 @@
+{
+    "name": "anuragsingk/laravel-ai-translator",
+    "description": "A Laravel package for AI-powered language file translation using Google Gemini.",
+    "keywords": [
+        "laravel",
+        "ai",
+        "translation",
+        "gemini"
+    ],
+    "homepage": "https://github.com/anuragsingk/laravel-ai-translator",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "Anurag Singh",
+            "email": "anurag989719@gmail.com",
+            "role": "Developer"
+        }
+    ],
+    "require": {
+        "php": ">=8.1",
+        "illuminate/support": "^10.0 || ^11.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "YourVendorName\\LaravelAiTranslator\\": "src/"
+        }
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "YourVendorName\\LaravelAiTranslator\\AiTranslatorServiceProvider"
+            ]
+        }
+    },
+    "config": {
+        "sort-packages": true
+    },
+    "minimum-stability": "dev",
+    "prefer-stable": true
+}
+
