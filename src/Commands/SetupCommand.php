@@ -13,11 +13,19 @@ class SetupCommand extends Command
     {
         $this->info('Setting up Laravel AI Translator...');
 
-        // 1. Get Gemini API Key
+        // 1. Publish config file first
+        $this->info('Publishing configuration...');
+        $this->call('vendor:publish', [
+            '--provider' => 'anuragsingk\LaravelAiTranslator\AiTranslatorServiceProvider',
+            '--tag' => 'ai-translator-config',
+            '--force' => true,
+        ]);
+
+        // 2. Get Gemini API Key
         $apiKey = $this->ask('Please enter your Gemini API Key:');
         $this->updateEnvFile('AI_TRANSLATOR_API_KEY', $apiKey);
 
-        // 2. Detect or ask for source language file(s)
+        // 3. Detect or ask for source language file(s)
         $this->info('Detecting source language files...');
         $langPath = lang_path();
 
@@ -54,8 +62,8 @@ class SetupCommand extends Command
             $this->updateConfigFile('source_files', $sourceFiles);
         }
 
-        // 3. Auto-detect source language from filename (fallback to ask user)
-        $sourceLanguage = config('ai-translator.source_language');
+        // 4. Auto-detect source language from filename (fallback to ask user)
+        $sourceLanguage = config('ai-translator.source_language', 'en');
         if (empty($sourceFiles['json']) && empty($sourceFiles['php'])) {
             $sourceLanguage = $this->ask('Could not auto-detect source language. Please enter your source language code (e.g., en):', 'en');
         } else {
@@ -80,18 +88,18 @@ class SetupCommand extends Command
         $this->updateConfigFile('source_language', $sourceLanguage);
 
         $this->info('Setup complete!');
-        $this->call('vendor:publish', ['--tag' => 'ai-translator-config']);
     }
 
     protected function updateEnvFile(string $key, string $value)
     {
         $envFile = base_path('.env');
+        $value = str_replace(['"', "'"], '', $value); // Sanitize value
         if (File::exists($envFile)) {
             $content = File::get($envFile);
             if (str_contains($content, "{$key}=")) {
-                $content = preg_replace("/^{$key}=.*$/m", "{$key}=" . $value, $content);
+                $content = preg_replace("/^{$key}=.*$/m", "{$key}={$value}", $content);
             } else {
-                $content .= "\n{$key}=" . $value;
+                $content .= "\n{$key}={$value}";
             }
             File::put($envFile, $content);
         } else {
@@ -102,13 +110,26 @@ class SetupCommand extends Command
     protected function updateConfigFile(string $key, $value)
     {
         $configPath = config_path('ai-translator.php');
-        if (File::exists($configPath)) {
-            $config = require $configPath;
-            data_set($config, $key, $value);
-            $content = '<?php\n\nreturn ' . var_export($config, true) . ';';
-            File::put($configPath, $content);
-        } else {
-            $this->warn('Config file config/ai-translator.php not found. Please publish it first.');
+        if (!File::exists($configPath)) {
+            $this->warn('Config file config/ai-translator.php not found. Publishing default config.');
+            $this->call('vendor:publish', [
+                '--provider' => 'anuragsingk\LaravelAiTranslator\AiTranslatorServiceProvider',
+                '--tag' => 'ai-translator-config',
+                '--force' => true,
+            ]);
         }
+
+        $config = require $configPath;
+        if (!is_array($config)) {
+            $this->error('Invalid config file format. Resetting to default.');
+            $config = require __DIR__ . '/../../Config/ai-translator.php';
+        }
+
+        data_set($config, $key, $value);
+
+        // Ensure proper formatting
+        $exported = var_export($config, true);
+        $content = "<?php\n\nreturn {$exported};";
+        File::put($configPath, $content);
     }
 }
