@@ -67,7 +67,6 @@ class SetupCommand extends Command
         if (empty($sourceFiles['json']) && empty($sourceFiles['php'])) {
             $sourceLanguage = $this->ask('Could not auto-detect source language. Please enter your source language code (e.g., en):', 'en');
         } else {
-            // Try to guess from common file names like en.json or en/messages.php
             foreach ($sourceFiles as $type => $files) {
                 foreach ($files as $file) {
                     if ($type === 'json') {
@@ -99,7 +98,7 @@ class SetupCommand extends Command
             if (str_contains($content, "{$key}=")) {
                 $content = preg_replace("/^{$key}=.*$/m", "{$key}={$value}", $content);
             } else {
-                $content .= "\n{$key}={$value}";
+                $content .= "\n{$key}={$value}\n";
             }
             File::put($envFile, $content);
         } else {
@@ -111,7 +110,7 @@ class SetupCommand extends Command
     {
         $configPath = config_path('ai-translator.php');
         if (!File::exists($configPath)) {
-            $this->warn('Config file config/ai-translator.php not found. Publishing default config.');
+            $this->warn('Config file not found. Publishing default config.');
             $this->call('vendor:publish', [
                 '--provider' => 'anuragsingk\LaravelAiTranslator\AiTranslatorServiceProvider',
                 '--tag' => 'ai-translator-config',
@@ -121,15 +120,33 @@ class SetupCommand extends Command
 
         $config = require $configPath;
         if (!is_array($config)) {
-            $this->error('Invalid config file format. Resetting to default.');
+            $this->error('Invalid config format. Resetting to default.');
             $config = require __DIR__ . '/../../Config/ai-translator.php';
         }
 
         data_set($config, $key, $value);
 
-        // Ensure proper formatting
-        $exported = var_export($config, true);
-        $content = "<?php\n\nreturn {$exported};";
+        // Format the config cleanly
+        $content = "<?php\n\nreturn " . $this->formatArray($config) . ";";
         File::put($configPath, $content);
+    }
+
+    protected function formatArray($array, $level = 0)
+    {
+        $indent = str_repeat('    ', $level);
+        $lines = ["["];
+
+        foreach ($array as $key => $value) {
+            $key = var_export($key, true);
+            if (is_array($value)) {
+                $lines[] = "{$indent}    {$key} => " . $this->formatArray($value, $level + 1) . ",";
+            } else {
+                $value = var_export($value, true);
+                $lines[] = "{$indent}    {$key} => {$value},";
+            }
+        }
+
+        $lines[] = "{$indent}]";
+        return implode("\n", $lines);
     }
 }

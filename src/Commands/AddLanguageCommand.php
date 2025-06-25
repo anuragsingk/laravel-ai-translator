@@ -15,8 +15,20 @@ class AddLanguageCommand extends Command
         $targetLanguage = $this->argument('language');
         $sourceLanguage = config('ai-translator.source_language');
         $sourceFiles = config('ai-translator.source_files');
+        $configPath = config_path('ai-translator.php');
 
-        if (in_array($targetLanguage, config('ai-translator.target_languages'))) {
+        if (!File::exists($configPath)) {
+            $this->error('Config file config/ai-translator.php not found. Run ai-translate:setup first.');
+            return Command::FAILURE;
+        }
+
+        $config = require $configPath;
+        if (!is_array($config)) {
+            $this->error('Invalid config file format. Resetting to default.');
+            $config = require __DIR__ . '/../../Config/ai-translator.php';
+        }
+
+        if (in_array($targetLanguage, data_get($config, 'target_languages', []))) {
             $this->error("Language '{$targetLanguage}' already exists.");
             return Command::FAILURE;
         }
@@ -47,25 +59,45 @@ class AddLanguageCommand extends Command
                         File::makeDirectory($targetDir, 0755, true);
                     }
                     $targetFilePath = lang_path("{$targetLanguage}/{$file}");
-                    File::put($targetFilePath, '<?php\n\nreturn ' . var_export($translatedContent, true) . ';');
+                    File::put($targetFilePath, "<?php\n\nreturn " . $this->formatArray($translatedContent) . ";");
                 }
                 $this->info("Translated {$file} to {$targetLanguage}.");
             }
         }
 
-        $this->updateTargetLanguages($targetLanguage);
+        $this->updateTargetLanguages($config, $targetLanguage);
 
         $this->info("Language '{$targetLanguage}' added successfully.");
         return Command::SUCCESS;
     }
 
-    protected function updateTargetLanguages(string $language)
+    protected function updateTargetLanguages(array &$config, string $language)
     {
         $configPath = config_path('ai-translator.php');
-        $config = require $configPath;
         $targetLanguages = data_get($config, 'target_languages', []);
         $targetLanguages[] = $language;
         data_set($config, 'target_languages', array_unique($targetLanguages));
-        File::put($configPath, '<?php\n\nreturn ' . var_export($config, true) . ';');
+
+        $content = "<?php\n\nreturn " . $this->formatArray($config) . ";";
+        File::put($configPath, $content);
+    }
+
+    protected function formatArray($array, $level = 0)
+    {
+        $indent = str_repeat('    ', $level);
+        $lines = ["["];
+
+        foreach ($array as $key => $value) {
+            $key = var_export($key, true);
+            if (is_array($value)) {
+                $lines[] = "{$indent}    {$key} => " . $this->formatArray($value, $level + 1) . ",";
+            } else {
+                $value = var_export($value, true);
+                $lines[] = "{$indent}    {$key} => {$value},";
+            }
+        }
+
+        $lines[] = "{$indent}]";
+        return implode("\n", $lines);
     }
 }
