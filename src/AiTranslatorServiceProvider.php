@@ -5,18 +5,24 @@ use Illuminate\Support\ServiceProvider;
 
 class AiTranslatorServiceProvider extends ServiceProvider
 {
+    /**
+     * Register any application services.
+     *
+     * @return void
+     */
     public function register()
     {
-        $config = config('ai-translator', []);
-        if (!is_array($config)) {
-            $config = require __DIR__ . '/Config/ai-translator.php';
-        }
         $this->mergeConfigFrom(
             __DIR__ . '/Config/ai-translator.php',
             'ai-translator'
         );
     }
 
+    /**
+     * Bootstrap any application services.
+     *
+     * @return void
+     */
     public function boot()
     {
         if ($this->app->runningInConsole()) {
