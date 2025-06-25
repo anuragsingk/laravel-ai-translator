@@ -13,8 +13,8 @@ class AddLanguageCommand extends Command
     public function handle(TranslatorService $translatorService)
     {
         $targetLanguage = $this->argument('language');
-        $sourceLanguage = config('ai-translator.source_language');
-        $sourceFiles = config('ai-translator.source_files');
+        $sourceLanguage = config('ai-translator.source_language', 'en');
+        $sourceFiles = config('ai-translator.source_files', []);
         $configPath = config_path('ai-translator.php');
 
         if (!File::exists($configPath)) {
@@ -33,35 +33,58 @@ class AddLanguageCommand extends Command
             return Command::FAILURE;
         }
 
-        $this->info("Translating to '{$targetLanguage}'...");
+        // Check if source files are configured
+        if (empty($sourceFiles)) {
+            $this->warn('No source files configured in config/ai-translator.php. Skipping translation.');
+        } else {
+            $this->info("Translating to '{$targetLanguage}'...");
 
-        foreach ($sourceFiles as $type => $files) {
-            foreach ($files as $file) {
-                $sourceFilePath = lang_path($type === 'json' ? $file : "{$sourceLanguage}/{$file}");
+            $translated = false;
+            foreach ($sourceFiles as $type => $files) {
+                foreach ($files as $file) {
+                    $sourceFilePath = lang_path($type === 'json' ? $file : "{$sourceLanguage}/{$file}");
 
-                if (!File::exists($sourceFilePath)) {
-                    $this->warn("Source file not found: {$sourceFilePath}");
-                    continue;
-                }
-
-                $this->line("Processing {$file}...");
-
-                if ($type === 'json') {
-                    $sourceContent = json_decode(File::get($sourceFilePath), true);
-                    $translatedContent = $translatorService->translateArray($sourceContent, $targetLanguage, $sourceLanguage);
-                    $targetFilePath = lang_path("{$targetLanguage}.json");
-                    File::put($targetFilePath, json_encode($translatedContent, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
-                } elseif ($type === 'php') {
-                    $sourceContent = require $sourceFilePath;
-                    $translatedContent = $translatorService->translateArray($sourceContent, $targetLanguage, $sourceLanguage);
-                    $targetDir = lang_path($targetLanguage);
-                    if (!File::isDirectory($targetDir)) {
-                        File::makeDirectory($targetDir, 0755, true);
+                    if (!File::exists($sourceFilePath)) {
+                        $this->warn("Source file not found: {$sourceFilePath}");
+                        continue;
                     }
-                    $targetFilePath = lang_path("{$targetLanguage}/{$file}");
-                    File::put($targetFilePath, "<?php\n\nreturn " . $this->formatArray($translatedContent) . ";");
+
+                    $this->line("Processing {$file}...");
+
+                    try {
+                        if ($type === 'json') {
+                            $sourceContent = json_decode(File::get($sourceFilePath), true);
+                            if (!is_array($sourceContent)) {
+                                $this->error("Invalid JSON content in {$sourceFilePath}");
+                                continue;
+                            }
+                            $translatedContent = $translatorService->translateArray($sourceContent, $targetLanguage, $sourceLanguage);
+                            $targetFilePath = lang_path("{$targetLanguage}.json");
+                            File::put($targetFilePath, json_encode($translatedContent, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+                        } elseif ($type === 'php') {
+                            $sourceContent = require $sourceFilePath;
+                            if (!is_array($sourceContent)) {
+                                $this->error("Invalid PHP array content in {$sourceFilePath}");
+                                continue;
+                            }
+                            $translatedContent = $translatorService->translateArray($sourceContent, $targetLanguage, $sourceLanguage);
+                            $targetDir = lang_path($targetLanguage);
+                            if (!File::isDirectory($targetDir)) {
+                                File::makeDirectory($targetDir, 0755, true);
+                            }
+                            $targetFilePath = lang_path("{$targetLanguage}/{$file}");
+                            File::put($targetFilePath, "<?php\n\nreturn " . $this->formatArray($translatedContent) . ";");
+                        }
+                        $this->info("Translated {$file} to {$targetLanguage}.");
+                        $translated = true;
+                    } catch (\Exception $e) {
+                        $this->error("Translation failed for {$file}: {$e->getMessage()}");
+                    }
                 }
-                $this->info("Translated {$file} to {$targetLanguage}.");
+            }
+
+            if (!$translated) {
+                $this->warn('No files were translated due to missing or invalid source files.');
             }
         }
 
