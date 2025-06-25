@@ -1,5 +1,4 @@
 <?php
-
 namespace anuragsingk\LaravelAiTranslator\Helpers;
 
 use Illuminate\Support\Facades\File;

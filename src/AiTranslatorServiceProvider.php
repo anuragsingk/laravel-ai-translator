@@ -1,5 +1,4 @@
 <?php
-
 namespace anuragsingk\LaravelAiTranslator;
 
 use Illuminate\Support\ServiceProvider;

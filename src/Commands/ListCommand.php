@@ -1,6 +1,4 @@
-
 <?php
-
 namespace anuragsingk\LaravelAiTranslator\Commands;
 
 use Illuminate\Console\Command;

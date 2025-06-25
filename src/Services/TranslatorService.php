@@ -1,5 +1,4 @@
 <?php
-
 namespace anuragsingk\LaravelAiTranslator\Services;
 
 use Illuminate\Support\Facades\Http;
