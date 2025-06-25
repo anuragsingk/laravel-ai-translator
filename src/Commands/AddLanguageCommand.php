@@ -4,7 +4,7 @@
 namespace anuragsingk\LaravelAiTranslator\Commands;
 
 use Illuminate\Console\Command;
-use YourVendorName\LaravelAiTranslator\Services\TranslatorService;
+use anuragsingk\LaravelAiTranslator\Services\TranslatorService;
 use Illuminate\Support\Facades\File;
 
 class AddLanguageCommand extends Command

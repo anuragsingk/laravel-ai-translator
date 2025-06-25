@@ -22,13 +22,13 @@
     },
     "autoload": {
         "psr-4": {
-            "YourVendorName\\LaravelAiTranslator\\": "src/"
+            "anuragsingk\\LaravelAiTranslator\\": "src/"
         }
     },
     "extra": {
         "laravel": {
             "providers": [
-                "YourVendorName\\LaravelAiTranslator\\AiTranslatorServiceProvider"
+                "anuragsingk\\LaravelAiTranslator\\AiTranslatorServiceProvider"
             ]
         }
     },
