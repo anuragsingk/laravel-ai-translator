@@ -19,7 +19,7 @@ class TranslatorService
         $this->logFile = config('ai-translator.log_file');
     }
 
-    public function translate(string $text, string $targetLanguage, string $sourceLanguage = 'en'): ?string
+    public function translate(string $text, string $targetLanguage, string $sourceLanguage = 'en', int $retries = 2): ?string
     {
         if (!$this->apiKey) {
             Log::error('Gemini API Key is not set.');
@@ -28,64 +28,84 @@ class TranslatorService
 
         $prompt = str_replace('{language}', $targetLanguage, $this->aiPrompt) . "\n\n" . $text;
 
-        try {
-            $response = Http::withHeaders([
-                'Content-Type' => 'application/json',
-            ])->post(
-                "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={$this->apiKey}",
-                [
-                    'contents' => [
-                        [
-                            'parts' => [
-                                ['text' => $prompt]
+        for ($attempt = 1; $attempt <= $retries; $attempt++) {
+            try {
+                $response = Http::withHeaders([
+                    'Content-Type' => 'application/json',
+                ])->post(
+                    "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={$this->apiKey}",
+                    [
+                        'contents' => [
+                            [
+                                'parts' => [
+                                    ['text' => $prompt]
+                                ]
                             ]
                         ]
                     ]
-                ]
-            );
+                );
 
-            if ($response->failed()) {
-                Log::error('Gemini API request failed', [
-                    'status' => $response->status(),
-                    'body' => $response->body(),
-                ]);
-                throw new \Exception('Gemini API request failed: ' . $response->body());
-            }
+                if ($response->failed()) {
+                    Log::error('Gemini API request failed', [
+                        'status' => $response->status(),
+                        'body' => $response->body(),
+                        'attempt' => $attempt,
+                    ]);
+                    if ($attempt < $retries && $response->status() == 429) {
+                        sleep(2); // Wait for rate limit
+                        continue;
+                    }
+                    throw new \Exception('Gemini API request failed: ' . $response->body());
+                }
 
-            $jsonResponse = $response->json();
+                $jsonResponse = $response->json();
 
-            // Log full response for debugging
-            Log::build([
-                'driver' => 'single',
-                'path' => storage_path('logs/ai-translator-debug.log'),
-            ])->info('Gemini API response: ' . json_encode($jsonResponse, JSON_PRETTY_PRINT));
-
-            $translatedText = $jsonResponse['candidates'][0]['content']['parts'][0]['text'] ?? null;
-
-            if ($translatedText === null) {
-                throw new \Exception('Failed to extract translated text from API response.');
-            }
-
-            if ($this->logTranslations) {
                 Log::build([
                     'driver' => 'single',
-                    'path' => $this->logFile,
-                ])->info("Translated '{$text}' from {$sourceLanguage} to {$targetLanguage}: '{$translatedText}'");
-            }
+                    'path' => storage_path('logs/ai-translator-debug.log'),
+                ])->info('Gemini API response: ' . json_encode($jsonResponse, JSON_PRETTY_PRINT));
 
-            return $translatedText;
-        } catch (\Exception $e) {
-            Log::error("Gemini API translation failed: " . $e->getMessage());
-            throw $e;
+                $translatedText = $jsonResponse['candidates'][0]['content']['parts'][0]['text'] ?? null;
+
+                if ($translatedText === null) {
+                    throw new \Exception('Failed to extract translated text from API response.');
+                }
+
+                if ($this->logTranslations) {
+                    Log::build([
+                        'driver' => 'single',
+                        'path' => $this->logFile,
+                    ])->info("Translated '{$text}' from {$sourceLanguage} to {$targetLanguage}: '{$translatedText}'");
+                }
+
+                return $translatedText;
+            } catch (\Exception $e) {
+                Log::error("Gemini API translation failed: " . $e->getMessage(), [
+                    'text' => $text,
+                    'attempt' => $attempt,
+                ]);
+                if ($attempt == $retries) {
+                    return null;
+                }
+            }
         }
+
+        return null;
     }
 
-    public function translateArray(array $data, string $targetLanguage, string $sourceLanguage = 'en'): array
+    public function translateArray(array $data, string $targetLanguage, string $sourceLanguage = 'en', $progressCallback = null): array
     {
         $translatedData = [];
+        $totalItems = count($data);
+        $currentItem = 0;
+
+        if ($progressCallback) {
+            $progressCallback($totalItems, 0);
+        }
+
         foreach ($data as $key => $value) {
             if (is_array($value)) {
-                $translatedData[$key] = $this->translateArray($value, $targetLanguage, $sourceLanguage);
+                $translatedData[$key] = $this->translateArray($value, $targetLanguage, $sourceLanguage, $progressCallback);
             } else {
                 try {
                     $translatedData[$key] = $this->translate($value, $targetLanguage, $sourceLanguage);
@@ -94,7 +114,13 @@ class TranslatorService
                     Log::error("Failed to translate '{$value}' to {$targetLanguage}: {$e->getMessage()}");
                 }
             }
+
+            $currentItem++;
+            if ($progressCallback) {
+                $progressCallback($totalItems, $currentItem);
+            }
         }
+
         return $translatedData;
     }
 }

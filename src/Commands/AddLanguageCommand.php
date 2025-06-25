@@ -40,8 +40,7 @@ class AddLanguageCommand extends Command
 
             $translated = false;
             foreach ($sourceFiles as $type => $files) {
-                $totalItems = count($files);
-                $this->output->progressStart($totalItems);
+                $this->output->progressStart(count($files));
 
                 foreach ($files as $file) {
                     $sourceFilePath = lang_path($type === 'json' ? $file : "{$sourceLanguage}/{$file}");
@@ -62,8 +61,16 @@ class AddLanguageCommand extends Command
                                 $this->output->progressAdvance();
                                 continue;
                             }
-                            $translatedContent = $translatorService->translateArray($sourceContent, $targetLanguage, $sourceLanguage);
-                            // Check for null translations
+                            $translatedContent = $translatorService->translateArray(
+                                $sourceContent,
+                                $targetLanguage,
+                                $sourceLanguage,
+                                function ($total, $current) {
+                                    $percentage = $total ? round(($current / $total) * 100) : 0;
+                                    $this->output->write(sprintf("\rTranslating keys: %d%%", $percentage));
+                                }
+                            );
+                            $this->output->writeln('');
                             $nullCount = count(array_filter($translatedContent, fn($value) => $value === null));
                             if ($nullCount > 0) {
                                 $this->warn("{$nullCount} translations failed in {$file}. Check logs for details.");
@@ -77,7 +84,16 @@ class AddLanguageCommand extends Command
                                 $this->output->progressAdvance();
                                 continue;
                             }
-                            $translatedContent = $translatorService->translateArray($sourceContent, $targetLanguage, $sourceLanguage);
+                            $translatedContent = $translatorService->translateArray(
+                                $sourceContent,
+                                $targetLanguage,
+                                $sourceLanguage,
+                                function ($total, $current) {
+                                    $percentage = $total ? round(($current / $total) * 100) : 0;
+                                    $this->output->write(sprintf("\rTranslating keys: %d%%", $percentage));
+                                }
+                            );
+                            $this->output->writeln('');
                             $nullCount = count(array_filter($translatedContent, fn($value) => $value === null));
                             if ($nullCount > 0) {
                                 $this->warn("{$nullCount} translations failed in {$file}. Check logs for details.");
